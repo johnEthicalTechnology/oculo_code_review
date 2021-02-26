@@ -1,8 +1,9 @@
 require "sinatra/base"
 require "sqlite3"
 require "nokogiri"
-require 'active_support/core_ext'
+require 'active_support'
 require 'json'
+require 'securerandom'
 
 class Server < Sinatra::Base
 
@@ -16,38 +17,53 @@ class Server < Sinatra::Base
   post '/messages/:format?' do
     case params['format']
     when 'json' then
-      message = JSONMessage.new(request.body)
+      message = JSONMessage.new(request.body.read)
       if message.valid?
-        message.save
+        id = message.save
+
         message.send_message
-        [200]
+        [200, {message: {id: id}}.to_json]
       else
         [400]
       end
     when 'xml'
-      message = XMLMesaage.new(request.body)
+      message = XMLMessage.new(request.body.read)
       if message.valid?
-        message.save
+        id = message.save
         message.send_message
-        [200]
+        builder = Nokogiri::XML::Builder.new do |xml|
+          xml.root do
+            xml.message do
+              xml.id id
+            end
+          end
+        end
+        [200, builder.to_xml]
       else
         [400]
       end
     else
-      [400, 'format not supported']
+      [400]
     end
   end
 
   get '/messages/:id/status/:format?' do
-    status = db.execute("SELECT status from messages WHERE id = #{params['id']} LIMIT 1")
-    return [400, 'not found'] if status.empty?
+    status = db.execute("SELECT status from messages WHERE id = '#{params['id']}' LIMIT 1")
+    return [400] if status.empty?
     case params['format']
     when 'json'
-      [200, {message: { status: status[:status] } }.to_json ]
+      [200, {message: { status: status.flatten.first } }.to_json ]
     when 'xml'
-      [200, { status: status[:status] }.to_xml(root: 'message')]
+      builder = Nokogiri::XML::Builder.new do |xml|
+        xml.root do
+          xml.message do
+            xml.status status.flatten.first
+          end
+        end
+      end
+      [200, builder.to_xml]
     else
-      [400, 'format not supported']
+      [400]
     end
   end
 
@@ -68,34 +84,35 @@ class Server < Sinatra::Base
 
     def valid?
       return false if [@to, @from, @message].any?(&:nil?)
-      return false if db.execute("SELECT * from users where id = #{@to} LIMIT 1").empty?
-      return false if db.execute("SELECT * from users where id = #{@from} LIMIT 1").empty?
+      return false if db.execute("SELECT * from users where id = '#{@to}' LIMIT 1").empty?
+      return false if db.execute("SELECT * from users where id = '#{@from}' LIMIT 1").empty?
       true
     end
 
     def save
       @id = SecureRandom.uuid
       db.execute(<<~SQL
-        INSERT INTO messages(id, to, from, message, status)
-        VALUES('#{@id}', '#{@to}','#{@from}', '#{@message}, 'pending');
+        INSERT INTO messages(id, to_user, from_user, message, status)
+        VALUES('#{@id}', '#{@to}','#{@from}', '#{@message}', 'pending');
         SQL
       )
+      @id
     end
 
     def send_message
-      sent = ExternalApiClient.new.send_message({to: @to, from: @from, message: @message})
+      sent = ExternalApiClient.send_message({to: @to, from: @from, message: @message})
       if sent
         db.execute(<<-SQL
           UPDATE messages
           SET status = 'sent'
-          WHERE id = #{@id};
+          WHERE id = '#{@id}';
         SQL
                   )
       else
         db.execute(<<-SQL
           UPDATE messages
           SET status = 'failed'
-          WHERE id = #{@id};
+          WHERE id = '#{@id}';
         SQL
                   )
       end
@@ -114,42 +131,43 @@ class Server < Sinatra::Base
 
     def parse(data)
       parsed_xml = Nokogiri::XML(data)
-      to = data.xpath('//to').text
-      from = data.xpath('//from').text
-      message = data.xpath('//message').text
+      to = parsed_xml.xpath('//to').text
+      from = parsed_xml.xpath('//from').text
+      message = parsed_xml.xpath('//message').text
       [to, from, message]
     end
 
     def valid?
       return false if [@to, @from, @message].any?(&:nil?)
-      return false if db.execute("SELECT * from users where id = #{@to} LIMIT 1").empty?
-      return false if db.execute("SELECT * from users where id = #{@from} LIMIT 1").empty?
+      return false if db.execute("SELECT * from users where id = '#{@to}' LIMIT 1").empty?
+      return false if db.execute("SELECT * from users where id = '#{@from}' LIMIT 1").empty?
       true
     end
 
     def save
       @id = SecureRandom.uuid
       db.execute(<<~SQL
-        INSERT INTO messages(id, to, from, message, status)
-        VALUES('#{@id}', '#{@to}','#{@from}', '#{@message}, 'pending');
+        INSERT INTO messages(id, to_user, from_user, message, status)
+        VALUES('#{@id}', '#{@to}','#{@from}', '#{@message}', 'pending');
         SQL
       )
+      @id
     end
 
     def send_message
-      sent = ExternalApiClient.new.send_message({to: @to, from: @from, message: @message})
+      sent = ExternalApiClient.send_message({to: @to, from: @from, message: @message})
       if sent
         db.execute(<<-SQL
           UPDATE messages
           SET status = 'sent'
-          WHERE id = #{@id};
+          WHERE id = '#{@id}';
         SQL
                   )
       else
         db.execute(<<-SQL
           UPDATE messages
           SET status = 'failed'
-          WHERE id = #{@id};
+          WHERE id = '#{@id}';
         SQL
                   )
       end
@@ -162,12 +180,8 @@ class Server < Sinatra::Base
 
   class ExternalApiClient
 
-    def initialize
-      # some config here
-    end
 
-    def send_message(message_hash)
-      sleep 10
+    def self.send_message(message_hash)
       [true, false].sample
     end
   end
