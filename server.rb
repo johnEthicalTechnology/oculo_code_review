@@ -8,10 +8,9 @@ require 'securerandom'
 class Server < Sinatra::Base
 
   # {
-  #  to: <USER ID>
-  #  from: <USER_ID>
-  #  message: <MESSAGE BODY>
-  #
+  #  to: <UUID>
+  #  from: <UUID>
+  #  message: <String>
   # }
 
   post '/messages/:format?' do
