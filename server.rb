@@ -182,6 +182,7 @@ class Server < Sinatra::Base
 
 
     def self.send_message(message_hash)
+      sleep 10
       [true, false].sample
     end
   end
