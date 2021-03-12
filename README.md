@@ -15,5 +15,6 @@ We would like you to do the following:
 - Create a pull request against your repo with the contents of `code.zip`
 - Review the pull request identifying problems you find in the code and suggest changes you would make to improve
 the code's maintainability, reliability and extendability
+- Provide commentary on any considerations or questions that might need to be answered about the code.
 
 When you're happy with your review send us a link to the PR.
