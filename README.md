@@ -1,6 +1,6 @@
 # Oculo Code Review
 ## The Code
-Inside of `code.zip` is some code that solves the following problem:
+Inside of `code.zip` is a simple prototype that allows users to send communications to each other. The functionallity can be described as:
 - Allow an API client to create a message from an existing user to an existing user and send it via an external api
 - Allow an API client to query the message at a later date to determine if the message has been successfully sent.
 
